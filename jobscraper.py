@@ -2,11 +2,11 @@ import urllib
 import requests
 from bs4 import BeautifulSoup
 
-def find_jobs(job_title,location,desired_characs):
+def find_jobs(job_title,location):
     job_soup = load_indeed_jobs_div(job_title,location)
-    jobs_list, num_listings = extract_job_information_indeed(job_soup,desired_characs)
+    jobs_list, num_listings = extract_job_information_indeed(job_soup)
 
-    return jobs_list
+    return jobs_list, num_listings
 
 def load_indeed_jobs_div(job_title,location):
     getvars = {'q':job_title,'l':location, 'fromage':'last','sort':'date'}
@@ -16,53 +16,25 @@ def load_indeed_jobs_div(job_title,location):
     job_soup = soup.find(id='mosaic-provider-jobcards')
     return job_soup
 
-def extract_job_information_indeed(job_soup,desired_characs):
+def extract_job_information_indeed(job_soup):
     job_elems = job_soup.find_all('div',class_='cardOutline')
+    jobs_list = {'titles' : [], 'companies' : [], 'links' : [], 'dates' : []}
 
-    cols = []
-    extracted_info = []
+    for job_elem in job_elems:
+        jobs_list['titles'].append(extract_job_title_indeed(job_elem))
+        jobs_list['companies'].append(extract_company_indeed(job_elem))
+        jobs_list['links'].append(extract_link_indeed(job_elem))
+        jobs_list['dates'].append(extract_date_indeed(job_elem))
 
-    if 'titles' in desired_characs:
-        titles = []
-        cols.append('titles')
-        for job_elem in job_elems:
-            titles.append(extract_job_title_indeed(job_elem))
-        extracted_info.append(titles)
-
-    if 'companies' in desired_characs:
-        companies = []
-        cols.append('companies')
-        for job_elem in job_elems:
-            companies.append(extract_company_indeed(job_elem))
-        extracted_info.append(companies)
-
-    if 'links' in desired_characs:
-        links = []
-        cols.append('links')
-        for job_elem in job_elems:
-            links.append(extract_link_indeed(job_elem))
-        extracted_info.append(links)
-
-    if 'date_listed' in desired_characs:
-        dates = []
-        cols.append('date_listed')
-        for job_elem in job_elems:
-            dates.append(extract_date_indeed(job_elem))
-        extracted_info.append(dates)
-    
-    jobs_list = {}
-
-    for j in range(len(cols)):
-        jobs_list[cols[j]] = extracted_info[j]
-    
-    num_listings = len(extracted_info[0])
+    num_listings = len(jobs_list['titles'])
 
     return jobs_list, num_listings
-
 
 def extract_job_title_indeed(job_elem):
     title_elem = job_elem.find('h2',class_='jobTitle')
     title = title_elem.text.strip()
+    if title[:3] == 'new' and title[:3].islower():
+        title = title[3:]
     return title
 
 def extract_company_indeed(job_elem):
@@ -80,6 +52,6 @@ def extract_date_indeed(job_elem):
     date = date_elem.text.strip()
     return date
 
-desired_characs = ['titles','companies','links','date_listed']
-jobs = find_jobs('python','San Francisco',desired_characs)
-print(jobs['companies'])
+jobs, num_listings = find_jobs('python','San Francisco')
+print(jobs['titles'])
+print(num_listings)
