@@ -1,57 +1,54 @@
+import gspread
 import urllib
 import requests
+from datetime import date
 from bs4 import BeautifulSoup
 
+sa = gspread.service_account()
+sh = sa.open('jobscraper')
+wks = sh.worksheet('Sheet1')
+
+jobs_list = []
+
 def find_jobs(job_title,location):
-    job_soup = load_indeed_jobs_div(job_title,location)
-    jobs_list, num_listings = extract_job_information_indeed(job_soup)
-
-    return jobs_list, num_listings
-
-def load_indeed_jobs_div(job_title,location):
-    getvars = {'q':job_title,'l':location, 'fromage':'last','sort':'date'}
+    getvars = {'q':job_title,'l':location, 'sort':'date'}
     url = ('https://www.indeed.com/jobs?' + urllib.parse.urlencode(getvars))
+    load_indeed_job_elems(url)
+
+def load_indeed_job_elems(url):
     page = requests.get(url)
     soup = BeautifulSoup(page.content, 'html.parser')
-    job_soup = soup.find(id='mosaic-provider-jobcards')
-    return job_soup
-
-def extract_job_information_indeed(job_soup):
+    job_soup = soup.find('ul', class_='jobsearch-ResultsList')
     job_elems = job_soup.find_all('div',class_='cardOutline')
-    jobs_list = {'titles' : [], 'companies' : [], 'links' : [], 'dates' : []}
+    extract_indeed_job_info(job_elems)
+    check_pagination(soup)
 
+def check_pagination(soup):
+    next_url = soup.find('a',{'aria-label':'Next'})
+    if next_url:
+        url = 'https://www.indeed.com' + next_url['href']
+        load_indeed_job_elems(url)
+
+def extract_indeed_job_info(job_elems):
     for job_elem in job_elems:
-        jobs_list['titles'].append(extract_job_title_indeed(job_elem))
-        jobs_list['companies'].append(extract_company_indeed(job_elem))
-        jobs_list['links'].append(extract_link_indeed(job_elem))
-        jobs_list['dates'].append(extract_date_indeed(job_elem))
+        row = [date.today().strftime('%m/%d/%y'),
+            extract_info(job_elem,'titles','h2','jobTitle'),
+            extract_info(job_elem,'companies','span','companyName'),
+            extract_info(job_elem,'links','a','jcs-JobTitle')]
+        jobs_list.append(row)
+    
+def extract_info(job_elem,info_type,elem,class_name):
+    if info_type != 'links':
+        info_elem = job_elem.find(elem,class_=class_name)
+        info = info_elem.text.strip()
+        if info_type == 'titles' and info[:3] == 'new' and info[:3].islower():
+            info = info[3:]
+    else:
+        info_elem = job_elem.find(elem,class_=class_name)['href']
+        info = 'https://www.indeed.com' + info_elem
+    return info
 
-    num_listings = len(jobs_list['titles'])
-
-    return jobs_list, num_listings
-
-def extract_job_title_indeed(job_elem):
-    title_elem = job_elem.find('h2',class_='jobTitle')
-    title = title_elem.text.strip()
-    if title[:3] == 'new' and title[:3].islower():
-        title = title[3:]
-    return title
-
-def extract_company_indeed(job_elem):
-    company_elem = job_elem.find('span',class_='companyName')
-    company = company_elem.text.strip()
-    return company
-
-def extract_link_indeed(job_elem):
-    link = job_elem.find('a',class_='jcs-JobTitle')['href']
-    link = 'https://www.indeed.com' + link
-    return link
-
-def extract_date_indeed(job_elem):
-    date_elem = job_elem.find('span',class_='date')
-    date = date_elem.text.strip()
-    return date
-
-jobs, num_listings = find_jobs('python','San Francisco')
-print(jobs['titles'])
+find_jobs('python','San Francisco')
+num_listings = len(jobs_list)
 print(num_listings)
+wks.append_rows(jobs_list)
